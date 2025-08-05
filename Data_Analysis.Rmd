@@ -1,0 +1,1308 @@
+---
+title: "Analysing Income Inequalities using R"
+author: "Project by: Akshay Shyam Bhagwat"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r}
+#loading the libraries
+library(tidyverse)
+library(ggplot2)
+library(reshape2)
+
+```
+
+# 1. INTRODUCTION
+
+```{r}
+# Load the dataset
+data <- read.csv("nlsy97.csv")
+
+summary(data)
+```
+
+```{r}
+# Replace negative values (except -1) with NA
+data <- data %>%
+  mutate(across(everything(), ~ ifelse(. < -1, NA, .)))
+
+colSums(is.na(data))
+
+```
+
+
+
+```{r}
+#Renaming the variables to understand them better.
+data <- data %>%
+  rename(
+    incarcerations = E8043100, 
+    teachers_quality = R0069400, 
+    marijuana_use = R0358900, 
+    gender = R0536300, 
+    age_1996 = R1194000, 
+    parent_relationship = R1205300, 
+    mom_education = R1302500, 
+    dad_education = R1302400, 
+    cocaine_use = R2191500, 
+    income = U2857200 
+)
+head(data)
+summary(data)
+```
+
+
+
+
+```{r}
+# Keep only selected variables
+data <- data %>%
+  select(income, gender, incarcerations, mom_education, dad_education, 
+         age_1996, cocaine_use, teachers_quality, parent_relationship, marijuana_use)
+
+# Verify structure
+str(data)
+summary(data)
+```
+
+
+```{r}
+#Replacing NA values 
+data <- data %>%
+  mutate(
+    # Critical variables: Replace with median or "Unknown"
+    income = ifelse(is.na(income), mean(income, na.rm = TRUE), income),
+    dad_education = ifelse(is.na(dad_education), median(dad_education, na.rm = TRUE), dad_education),
+    mom_education = ifelse(is.na(mom_education), median(mom_education, na.rm = TRUE), mom_education),
+    
+    # Behavioral variables: Replace with "Unknown"
+    cocaine_use = ifelse(is.na(cocaine_use), "Unknown", cocaine_use),
+    marijuana_use = ifelse(is.na(marijuana_use), "Unknown", marijuana_use),
+    teachers_quality = ifelse(is.na(teachers_quality), "Unknown", teachers_quality),
+    
+    # Parental relationship: Replace with "Unknown"
+    parent_relationship = ifelse(is.na(parent_relationship), "Unknown", parent_relationship),
+    
+    # incarcerations
+    incarcerations = ifelse(is.na(incarcerations), "Unknown" , incarcerations)
+  )
+
+
+```
+
+```{r}
+#Recoding factor variables.
+
+#Gender:
+data <- data %>%
+  mutate(gender = factor(gender, levels = c(1, 2), labels = c("Male", "Female")))
+
+
+
+# Teacher's quailty:
+data <- data %>%
+  mutate(teachers_quality = case_when(
+    teachers_quality == -1 ~ "Refusal",
+    teachers_quality == 1 ~ "Strongly Agree",
+    teachers_quality == 2 ~ "Agree",
+    teachers_quality == 3 ~ "Disagree",
+    teachers_quality == 4 ~ "Strongly Disagree",
+    TRUE ~ "Unknown"
+  )) %>%
+  mutate(teachers_quality = factor(teachers_quality, 
+                                   levels = c("Refusal", "Strongly Agree", "Agree", "Disagree", "Strongly Disagree", "Unknown")))
+
+#Parent's Relationship:
+
+data <- data %>%
+  mutate(parent_relationship = case_when(
+    parent_relationship == 1 ~ "Both Biological Parents",
+    parent_relationship %in% c(2, 3) ~ "One Biological parent)",
+    parent_relationship %in% c(4, 5) ~ "Single Biological Parent",
+    parent_relationship %in% c(6, 7) ~ "Adoptive Parents",
+    parent_relationship %in% c(8, 9, 10) ~ "No Parents",
+    TRUE ~ "Unknown"
+  )) %>%
+  mutate(parent_relationship = factor(parent_relationship,
+                                      levels = c("Both Biological Parents",
+                                                 "One Biological parent)",
+                                                 "Single Biological Parent",
+                                                 "Adoptive Parents",
+                                                 "No Parents", 
+                                                 "Unknown")))
+
+# incarcerations
+data$incarcerations <- as.numeric(data$incarcerations)
+
+
+
+# mom education
+data <- data %>%
+  mutate(mom_education = case_when(
+    mom_education %in% c(1:8) ~ "Grade School",
+    mom_education %in% c(9:12) ~ "High School",
+    mom_education %in% c(13:20) ~ "College",
+    mom_education %in% c(95) ~ "Ungraded",
+    TRUE ~ "Unknown"
+  )) %>%
+  mutate(mom_education = factor(mom_education,
+                                levels = c("Grade School",
+                                     "High School",
+                                     "College",
+                                     "Ungraded"))) 
+
+# dad education
+data <- data %>%
+  mutate(dad_education = case_when(
+    dad_education %in% c(1:8) ~ "Grade School",
+    dad_education %in% c(9:12) ~ "High School",
+    dad_education %in% c(13:20) ~ "College",
+    dad_education %in% c(95) ~ "Ungraded",
+    TRUE ~ "Unknown"
+  )) %>%
+  mutate(dad_education = factor(dad_education,
+                                levels = c("Grade School",
+                                     "High School",
+                                     "College",
+                                     "Ungraded"))) 
+
+#Marijuana & Cocaine Use:
+
+data <- data %>%
+  mutate(
+    marijuana_use = case_when(
+      marijuana_use == -1 ~ "Refusal",
+      marijuana_use == 0 ~ "No",
+      marijuana_use == 1 ~ "Yes",
+      TRUE ~ "Unknown"
+    ),
+    cocaine_use = case_when(
+      cocaine_use == -1 ~ "Refusal",
+      cocaine_use == 0 ~ "No",
+      cocaine_use == 1 ~ "Yes",
+      TRUE ~ "Unknown"
+    )
+  ) %>%
+  mutate(
+    marijuana_use = factor(marijuana_use, levels = c("Refusal", "No", "Yes", "Unknown")),
+    cocaine_use = factor(cocaine_use, levels = c("Refusal", "No", "Yes", "Unknown"))
+  )
+
+table(data$gender, useNA = "ifany")
+table(data$teachers_quality, useNA = "ifany")
+table(data$marijuana_use, useNA = "ifany")
+table(data$cocaine_use, useNA = "ifany")
+
+
+summary(data)
+
+```
+
+From this quick table summary of our categorized data, you can see that there is a large population of data that can be utilized in our report. We factorized key categorical variables to assign meaningful labels and ensure they are ready for analysis.
+This process involved recoding raw numeric values (e.g., 1 for Male, 2 for Female) into descriptive labels, such as "Male" and "Female", for better readability and understanding The data points that we chose to work with are outlined below, along with factor level names to better understand the data.
+* gender (the gender of the respondents)
+    - Male
+    - Female
+* income (the total income in USD from salaries and wages)
+* incarcerations (total number of incarcerations)
+* mom_education (biological mothers highest grade completed)
+    - Grade school
+    - High school
+    - College
+    - Ungraded
+* dad_education (biological fathers highest grade completed)
+    - Grade school
+    - High school
+    - College
+    - Ungraded
+* age_1996 (age as of 12/31/96)
+* marijuana_use (has the respondent ever used Marijuana)
+    - Yes
+    - No
+    - Refusal
+    - Unknown
+* cocaine_use (has the respondent ever used cocaine or hard drugs)
+    - Yes
+    - No
+    - Refusal
+    - Unknown
+* parent_relationship (respondent's relationship to household parent figure)
+    - Both Biological Parents
+    - One Biological parent
+    - Single Biological Parent
+    - Adoptive Parents
+    - No Parents
+    - Unknown
+* teachers_quality (are the teachers good?)
+    - Strongly Agree
+    - Agree
+    - Disagree
+    - Strongly Disagree
+    - Refusal
+    - Unknown
+
+From the basic tables above the count of the data that has factor level naming has been given, otherwise for data points like income and age a five number summary is given.
+
+###Code for Summaries:
+
+```{r}
+
+# Gender Distribution
+ggplot(data, aes(x = gender)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Gender Distribution",
+    x = "Gender",
+    y = "Count"
+  )
+
+
+# Teachers' Quality Distribution
+ggplot(data, aes(x = teachers_quality)) +
+  geom_bar(fill = "purple", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Teachers' Quality Perception",
+    x = "Teachers' Quality",
+    y = "Count"
+  )
+
+# Boxplot for Income
+ggplot(data, aes(y = income)) +
+  geom_boxplot(fill = "orange", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Income Boxplot",
+    y = "Income ($)"
+  ) +
+  scale_y_continuous(labels = scales::dollar_format())
+
+
+# Histogram for Age
+ggplot(data, aes(x = age_1996)) +
+  geom_histogram(binwidth = 1, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Age Distribution (1996)",
+    x = "Age",
+    y = "Count"
+  )
+
+# incarceration 
+
+ggplot(data, aes(x = incarcerations)) +
+  geom_histogram(binwidth = 3, fill = "lightblue", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Length of Incarcerations",
+    x = "Months",
+    y = "Count"
+  )
+
+# cocaine use
+
+ggplot(data, aes(x = cocaine_use)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Ever Used Cocaine",
+    x = "Answer",
+    y = "Count"
+  )
+
+# marijuana use
+
+ggplot(data, aes(x = marijuana_use)) +
+  geom_bar(fill = "lightpink", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Ever Used Marijuana",
+    x = "Answer",
+    y = "Count"
+  )
+
+# mom education 
+ggplot(data, aes(x = mom_education)) +
+  geom_bar(fill = "lightblue", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Education of Mother",
+    x = "Years of Schooling",
+    y = "Count"
+  )
+
+# dad education
+ggplot(data, aes(x = dad_education)) +
+  geom_bar(fill = "lightblue", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Education of Dad",
+    x = "Years of Schooling",
+    y = "Count"
+  )
+
+# parents relationship
+
+ggplot(data, aes(x = parent_relationship)) +
+  geom_bar(fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Relationship between parents",
+    x = "parents",
+    y = "Count"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+```
+
+The graphs above provide a visual overview of the data from the 10 variables we've chosen. For gender and age, there is a fairly even distribution of data shown in the graphs indicating a fair distribution of data. However, for the age variable there is not a very big distribution of ages as it only spans from 12 to 16. For the number of incarcerations, there is an overwhelming majority of data at 0, however there is a small margin of data above 0 which could be interesting to study in the following sections. The majority of the income data is also grouped fairly close together, however there are some data points that greatly deviate from the mean that case the whiskers of the box plot to span out rather large. What is surprising is that there is an overwhelming majority of people that said that they disagree with the statement that the teachers are good. For the cocaine and marijuana use graphs, the graphs do look similar, but more respondents said yes to using marijuana compared to cocaine, but more people data points were unknown for cocaine which could be an interesting reflection on how the data was obtained. For biological mom and dad's highest education graphs, they do look similar, however there appears to be more data points on the mom's education compared to the dad's education graphs when comparing the total counts of data. Lastly, for the relationship between parents, most of the respondents had both biological parents, followed surprisingly by either a single mother or father, then 2 parents but only one of them being biologically related, then no parents, and lastly adoptive parents.
+
+### Section:2 Methodology
+
+(1)  How did you deal with missing values?
+- First we replaced all the negative values except (-1), which we though might inform us about income, with NA. Now as we were left with the NA values (missing values) in the dataset, we used "Categoriacal Variable" that were labeled as "Unknown" or "Refusal" where applicable. For example, in the use of cocaine use data, we can't directly predict or can put an average over the missing values, so we used "Unknown" over there. This ensured that individuals with incomplete data were not excluded from the analysis but were accounted for as part of the dataset.
+
+- Aditionally, for "Continuous Variables" such as income, missing values were removed from the analysis for simplicity and to avoid bias from imputation methods.
+- For continuous variables (like income or parental education), we replaced missing values with:
+The mean for income because it represents the overall average income.
+The median for mom_education and dad_education because they are ordinal, and the median better reflects central trends.
+
+*Impact*: This approach preserves as much information as possible without introducing assumptions through imputation. However, it may limit generalizability since “Unknown” and “Refusal” responses may introduce bias, and complete case analysis reduces the sample size.
+
+---
+
+(2) How did you deal with topcoded variables?
+- The income variable is topcoded at $200,000. This means we don’t know the exact incomes for the top 2% of earners because their income is replaced by an average value.
+- We kept the topcoded value as it is, so we didn’t lose high-income earners from the analysis.
+- However, we noted that this makes it hard to analyze how much these top earners actually earn. For example, we can’t know if there are big income gaps among the richest people, which could affect our understanding of income inequality.
+
+---
+
+(3) Did you produce any tables or plots that you thought would reveal interesting trends but didn’t?
+
+*Drug Use (Marijuana and Cocaine) vs Income:*
+we created boxplots to compare income between individuals who reported drug use (marijuana or cocaine) and those who didn’t. I hypothesized that drug use might correlate with lower income due to its potential socioeconomic impacts.
+The results were inconclusive. Both users and non-users had high-income outliers, and the overall income distribution didn’t differ significantly between the groups.
+
+*Teacher’s Quality vs Income:*
+we analyzed the relationship between perceived teacher quality and income, expecting that positive perceptions of teacher quality might be associated with better educational outcomes and higher income.
+The analysis showed no clear relationship. Income levels were similar across all teacher quality categories, and the variable didn’t seem to influence income significantly.
+
+*Correlation Heatmap:*
+we included a heatmap to visualize correlations between variables. While some relationships (e.g., parental education and income) were moderately positive, many expected relationships (like gender and drug use, or teacher quality and income) showed negligible correlations, which limited their usefulness for further analysis.
+
+---
+
+(4) What relationships did you investigate that don’t appear in your findings section?
+
+During the analysis, we explored several relationships that we hypothesized might provide insights into income inequality but ultimately decided not to include in the findings section because they didn’t reveal significant or interpretable trends:
+
+*Parental Relationship and Income:*
+We investigated how different family structures (e.g., both biological parents, single parents, adoptive parents) affected income. The hypothesis was that individuals from stable family environments might have better economic outcomes.
+The results showed no meaningful differences in income across these categories. The distributions were similar, and no clear trends emerged, so this relationship was excluded from the findings section.
+
+
+*Teacher Quality and Income:*
+We explored the impact of perceived teacher quality on income, assuming that higher teacher quality might positively influence educational outcomes and, subsequently, income.
+However, the data didn’t show a strong or consistent relationship. Income levels appeared similar across all teacher quality categories, making this relationship less relevant to the study’s focus.
+
+
+*Drug Use (Marijuana and Cocaine) and Income:*
+We examined whether individuals who reported using marijuana or cocaine had different income levels compared to non-users. The hypothesis was that drug use might correlate with socioeconomic disadvantages and lower income.
+The results were inconclusive. Both users and non-users had a wide range of incomes, including high-income outliers, and the overall distributions didn’t show significant differences.
+
+
+*Age in 1996 and Income:*
+We analyzed the relationship between age (recorded in 1996) and income to see if older individuals in the dataset had higher earnings due to more work experience.
+The results didn’t reveal a significant trend. The income distribution was broad across all age groups, and no clear pattern emerged, so this analysis wasn’t included in the findings.
+
+---
+
+(5) What’s the analysis that you finally settled on? What income and gender-related factors do you investigate in the final analysis?*
+
+In the final analysis, we focused on investigating income inequality through a gender lens, while also incorporating key socioeconomic factors to explore their interplay with income and gender. The analyses we settled on included:
+
+*1. Gender and Income Disparity:*
+
+We compared income distributions between males and females using boxplots and statistical tests.
+Key Findings:
+Females had slightly higher average incomes than males, but both genders showed heavily skewed income distributions with low medians and significant outliers.
+Males consistently had more high-income outliers, reflecting structural advantages or societal biases in earning potential.
+A Welch’s t-test confirmed a significant gender-based difference in income distributions.
+
+
+*2. Impact of Parental Education on Income and Gender:*
+
+We examined how maternal and paternal education levels influenced income for both genders.
+Key Findings:
+Higher parental education levels, especially College education, were associated with higher incomes for both males and females.
+Males disproportionately benefited from higher parental education, with wider income variability and more frequent high-income outliers.
+For individuals with Grade School-educated parents, income disparities between genders were less pronounced, suggesting fewer opportunities for economic advancement in this group.
+
+
+*4. Drug Use and Income:*
+
+We explored the interaction between gender, drug use (marijuana and cocaine), and income.
+Key Findings:
+Marijuana and cocaine use showed weak correlations with income. Gender differences within each drug-use category were more noticeable than the overall impact of drug use on income.
+
+
+*5. Regression Analysis:*
+
+We developed a regression model to quantify the combined effects of gender, parental education, and incarceration on income.
+Key Findings:
+Gender (being female) had a significant negative coefficient, indicating that females earned substantially less than males, even after controlling for other factors.
+Parental College education significantly increased income, while Grade School and High School education had less impact.
+Incarceration had a strong negative effect on income, reinforcing its socioeconomic consequences.
+
+
+*Final Focus*: The analysis highlighted significant gender-based income disparities, exacerbated by factors like parental education and incarceration history. These findings emphasize the importance of addressing structural inequities, such as access to higher education and support for individuals with incarceration histories, to reduce income inequality.
+ 
+
+
+### Section 3
+
+```{r}
+# Check the structure of the dataset
+str(data)
+
+# Alternatively, check the data types for each variable
+sapply(data, class)
+
+```
+```{r}
+# Convert factor variables to numeric for correlation analysis
+data_encoded <- data %>%
+  mutate(
+    gender = as.numeric(gender),  # Factor to numeric
+    teachers_quality = as.numeric(teachers_quality),
+    parent_relationship = as.numeric(parent_relationship),
+    mom_education = as.numeric(mom_education),
+    dad_education = as.numeric(dad_education),
+    cocaine_use = as.numeric(cocaine_use),
+    marijuana_use = as.numeric(marijuana_use)
+  )
+
+# Verify the data types
+sapply(data_encoded, class)
+
+```
+```{r}
+str(data)
+
+# Alternatively, check the data types for each variable
+sapply(data, class)
+```
+```{r}
+str(data_encoded)
+
+# Alternatively, check the data types for each variable
+sapply(data_encoded, class)
+```
+
+
+From these heat-map we can see the correlation between the variables. 
+```{r}
+# Select the required variables for correlation
+
+correlation_vars <- data_encoded %>%
+  select(income, gender, incarcerations, mom_education, dad_education, 
+         age_1996, cocaine_use, teachers_quality, parent_relationship, marijuana_use)
+
+# Calculate the correlation matrix
+cor_matrix <- cor(correlation_vars, use = "complete.obs")
+
+# Reshape the correlation matrix for plotting
+cor_melt <- melt(cor_matrix)
+
+# Create the heatmap with correlation values
+ggplot(cor_melt, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  geom_text(aes(label = round(value, 2)), color = "black", size = 3) +  # Add correlation values as text
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Correlation Heatmap with Values", x = "Variables", y = "Variables", fill = "Correlation")
+
+```
+## Insights from the Correlation Heatmap
+The heatmap provides insights into the relationships between variables in the dataset. Below are the key takeaways:
+
+### 1. Income Correlations
+
+#### Positive Correlations:
+Dad's Education (0.15) and Mom's Education (0.13) show a moderate positive correlation with income, suggesting that higher parental education levels are associated with higher individual income.
+
+#### Negative Correlations:
+Gender (-0.15) has a moderate negative correlation with income. Given the gender coding (e.g., 1 = Male, 2 = Female), this indicates that males are more likely to have higher incomes.
+
+Incarcerations (-0.05) has a slight negative correlation with income, suggesting that individuals with more incarcerations tend to have lower incomes, though the relationship is weak.
+
+### 2. Parental Education Correlations
+Strong Positive Correlation between Mom's and Dad's Education (0.5):
+This is expected as parents with similar education levels are likely to have shared socioeconomic backgrounds.
+Both mom's and dad's education levels show similar relationships with other variables, including moderate positive correlations with income.
+
+### 3. Incarceration Correlations
+Negative Correlation with Gender (-0.17):
+Suggests that males (coded 1) are more likely to have experienced incarcerations compared to females.
+Negative Correlation with Dad's Education (-0.1) and Mom's Education (-0.07):
+Indicates that higher parental education levels are associated with fewer incarcerations.
+
+### 4. Gender Correlations
+Negative Correlation with Income (-0.15):
+Indicates that being male (coded 1) is associated with higher income levels.
+Negative Correlation with Incarcerations (-0.17):
+Suggests a gendered trend in incarceration, with males being more likely to experience it.
+
+### 5. Drug Use (Marijuana and Cocaine) Correlations
+Weak or Negligible Correlations:
+Both marijuana use and cocaine use show very weak correlations with income, gender, and other variables, suggesting that they do not strongly influence these outcomes.
+
+### 6. Teacher's Quality and Parent Relationship
+Negligible Correlations with Income:
+Both teacher's quality and parent relationship show little to no correlation with income or other key variables, indicating they might not significantly impact income inequality in this dataset.
+
+## Overall Patterns and Implications
+
+### Parental Education:
+Parental education levels (both mom’s and dad’s) are positively correlated with income, reinforcing the importance of socioeconomic background in determining individual income.
+
+### Gender and Income Inequality:
+The moderate negative correlation between gender and income suggests a significant income disparity favoring males, aligning with earlier findings from the box plots.
+
+### Incarceration Impact:
+While incarceration has a weak negative correlation with income, it is more strongly associated with lower parental education levels and being male.
+
+### Negligible Impact of Drug Use and Teacher's Quality:
+These factors do not show meaningful correlations with income or other variables, suggesting limited influence in the context of this analysis.
+
+
+
+```{r}
+# section 3
+# Gender vs Income Boxplot
+ggplot(data, aes(x = gender, y = income, fill = gender)) +
+  geom_boxplot(outlier.color = "red", alpha = 0.7) +
+  labs(title = "Income Distribution by Gender", x = "Gender", y = "Income ($)") +
+  theme_minimal()
+
+# Perform a t-test for gender differences in income
+t_test_gender <- t.test(income ~ gender, data = data, alternative = "two.sided")
+print(t_test_gender)
+
+```
+
+Both males and females have median incomes at or near \$0, indicating that a significant proportion of individuals in both groups report no income.
+Mean Income:
+
+The mean income is higher for females (\$3,460.79) than males (\$2,883.19), suggesting that females may have slightly higher earnings on average, driven by outliers.
+Income Range:
+
+Both genders exhibit similar minimum incomes (\$0) and maximum incomes (\$200,000 due to topcoding).
+
+The interquartile range (IQR) is small for both genders, with most individuals clustered near the lower end of the income scale.
+Outliers:
+
+Both males and females have significant outliers, with incomes far exceeding the IQR.
+These outliers extend to the topcoded maximum value of \$200,000, reflecting a small group of high earners.
+Skewness:
+
+Income distributions for both genders are highly right-skewed, with the majority of individuals earning low incomes and a few individuals earning substantially more.
+```{r}
+library(dplyr)
+summary_table <- data %>%
+  group_by(gender, mom_education, dad_education) %>%
+  summarise(
+    mean_income = mean(income, na.rm = TRUE),
+    median_income = median(income, na.rm = TRUE),
+    sd_income = sd(income, na.rm = TRUE),
+    .groups = "drop"
+  )
+print(summary_table)
+```
+
+```{r}
+# Gender vs Parental Education
+ggplot(data, aes(x = gender, fill = mom_education)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Gender vs Mother's Education Proportions",
+    x = "Gender",
+    y = "Proportion",
+    fill = "Mother's Education"
+  ) +
+  theme_minimal()
+
+
+```
+
+## Key Observations:
+
+### High School as Dominant Category:
+
+The majority of both males and females have mothers whose highest education level is High School, as this category occupies the largest proportion in the stacked bar chart.
+
+### College Education:
+
+A significant portion of individuals have mothers with a College education, making it the second-most common category for both genders.
+
+### Grade School and Ungraded Education:
+
+Grade School and Ungraded education levels are the least common categories for mothers across both genders, with a minimal proportion visible in the stacked bar chart.
+
+### Gender Distribution Across Education Levels:
+
+There is no significant visual difference in the proportions of males and females across the different education levels. This suggests that maternal education levels are similarly distributed across genders.
+
+```{r}
+
+
+
+```
+
+
+```{r}
+# Grouped boxplot: Income by Gender and Mother's Education Level
+ggplot(data, aes(x = mom_education, y = income, fill = gender)) +
+  geom_boxplot(outlier.color = "red", alpha = 0.7, position = position_dodge(0.8)) +
+  labs(
+    title = "Income by Gender and Mother's Education Level",
+    x = "Mother's Education Level",
+    y = "Income ($)",
+    fill = "Gender"
+  ) +
+  theme_minimal()
+
+
+```
+### Key Observations:
+
+### Overall Gender Disparity:
+
+Across all levels of maternal education, males tend to have higher median incomes than females.
+The income range for males generally includes higher outliers compared to females.
+Income Distribution by Education Level:
+
+### Grade School:
+The median income for males and females is quite similar.
+However, males exhibit more extreme outliers compared to females.
+
+### High School:
+The income disparity between genders becomes more noticeable.
+Males have higher median incomes and greater variability in their income distribution.
+
+### College:
+The gender gap is widest for individuals with College-educated mothers. Males exhibit both higher medians and more frequent high-income outliers.
+
+### Ungraded:
+This category shows limited data, but males appear to have slightly higher median incomes and fewer extreme outliers compared to the other categories.
+
+### Variation in Income:
+
+The income variability is highest for individuals with College-educated mothers, particularly for males. This suggests that maternal College education enables some individuals (primarily males) to achieve significantly higher earnings.
+Individuals with Grade School-educated mothers show the least income variability, indicating limited economic mobility in this group.
+
+### Impact of Maternal Education:
+
+Maternal education positively influences income levels for both genders.
+The impact appears to be greater for males, as the median and upper-income levels rise substantially with higher maternal education levels (e.g., College education).
+
+
+## Insights Related to Gender and Income Inequality:
+
+### Gender Gap Across Education Levels:
+
+The income disparity between males and females is most pronounced for individuals with College-educated mothers, indicating that males benefit disproportionately from higher maternal education.
+The smallest gender disparity occurs for individuals with Grade School-educated mothers, suggesting limited opportunities for economic advancement in this group regardless of gender.
+Outliers and High Earners:
+
+Males consistently dominate the high-income outliers across all education levels, which may indicate structural advantages or societal biases that favor men in high-paying opportunities.
+Policy Implications:
+
+Interventions targeting females, particularly those with College-educated mothers, could help address the gender income gap and ensure equitable opportunities for high-paying roles.
+Support programs for individuals with Grade School-educated mothers may also reduce overall income inequality, as this group has the lowest income variability and opportunities.
+
+```{r}
+# Gender vs Dad's Education Proportion
+ggplot(data, aes(x = gender, fill = dad_education)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Gender vs Dad's Education Proportions",
+    x = "Gender",
+    y = "Proportion",
+    fill = "Dad's Education"
+  ) +
+  theme_minimal()
+
+```
+## Key Insights
+
+### Gender Distribution Across Dad's Education Levels:
+
+The proportions of males and females across different paternal education levels appear to be balanced, similar to the earlier plot for maternal education.
+The High School education level is the most common category for fathers, accounting for the majority of individuals for both genders.
+The College education level is the second-most frequent category for fathers, followed by Grade School education.
+The Ungraded education category is the least common for fathers, with a very small representation for both males and females.
+
+### Balanced Representation:
+
+Since males and females are proportionally distributed across paternal education levels, any observed gender differences in income are less likely to be due to imbalances in paternal education distribution.
+
+
+```{r}
+# Income by Gender and Dad's Education Level
+ggplot(data, aes(x = dad_education, y = income, fill = gender)) +
+  geom_boxplot(outlier.color = "red", alpha = 0.7, position = position_dodge(0.8)) +
+  labs(
+    title = "Income by Gender and Dad's Education Level",
+    x = "Dad's Education Level",
+    y = "Income ($)",
+    fill = "Gender"
+  ) +
+  theme_minimal()
+
+```
+## Key Insights
+
+### Overall Gender Disparity in Income:
+
+Across all levels of paternal education, males have higher median incomes compared to females.
+The income distribution for males also exhibits more outliers, especially for individuals with fathers having a College education or High School education.
+Impact of Dad's Education on Income:
+
+### College Education:
+Individuals with fathers who attained a College education have the highest median incomes for both genders.
+The gender gap in income is most pronounced in this category, with males earning significantly more than females at the upper end.
+
+### High School Education:
+Median incomes for males and females are closer compared to the College category, but males still have a higher median and more high-income outliers.
+
+### Grade School Education:
+Both genders have the lowest median incomes in this category, with a smaller gender gap compared to the College and High School categories.
+
+### Ungraded Education:
+Limited data is available for this category, but males appear to have a slightly higher median income.
+
+### Income Variability and Outliers:
+
+Income variability increases with higher paternal education levels (e.g., High School, College), especially for males.
+For females, income variability is generally narrower, with fewer extreme outliers compared to males.
+
+```{r}
+
+
+```
+
+
+```{r}
+# Gender and Drug Use Interaction on Income
+ggplot(data, aes(x = marijuana_use, y = income, fill = gender)) +
+  geom_boxplot(outlier.color = "red", alpha = 0.7) +
+  labs(title = "Income by Gender and Marijuana Use", x = "Marijuana Use", y = "Income ($)") +
+  theme_minimal()
+
+```
+Non-users and users have similar income distributions, with males generally earning more.
+Marijuana use does not appear to have a clear linear relationship with income as indicated by our correlation heat map also, but gender differences are noticeable within each group.
+
+
+
+# Next step
+1. Regression Model + Interpretation
+A linear regression model is essential to quantify the combined effects of gender, parental education, and incarcerations on income.
+Including statistical significance (p-values), confidence intervals, and model diagnostics.
+
+```{r}
+# Fit a linear regression model
+income_model <- lm(income ~ gender + mom_education + dad_education + incarcerations, data = data)
+
+# Model summary
+summary(income_model)
+
+
+
+```
+
+### Key Insights:
+
+1. Gender (Female)
+Coefficient: -9823.2
+p-value: < 2e-16 (statistically significant)
+Interpretation:
+Being female is associated with earning $9,823 less compared to males, holding all other factors constant. This highlights a significant gender income disparity.
+2. Mother's Education
+High School (Reference: Grade School): Coefficient = 794.7, p = 0.555 (not significant)
+
+College (Reference: Grade School): Coefficient = 5857.8, p < 0.001 (significant)
+
+Individuals with mothers who attained College education earn approximately $5,858 more than those with mothers who only completed Grade School.
+Ungraded (Reference: Grade School): Coefficient = -14975.8, p = 0.244 (not significant)
+
+Income does not differ significantly for individuals with mothers in the "Ungraded" education category.
+Interpretation:
+Higher maternal education levels, especially College, positively influence income, while other levels (High School, Ungraded) do not show significant differences.
+
+3. Father's Education
+High School (Reference: Grade School): Coefficient = 714.8, p = 0.601 (not significant)
+
+College (Reference: Grade School): Coefficient = 8699.2, p < 0.001 (significant)
+
+Individuals with fathers who attained College education earn approximately $8,699 more than those with fathers who only completed Grade School.
+Ungraded (Reference: Grade School): Coefficient = -2026.5, p = 0.856 (not significant)
+
+Interpretation:
+Similar to maternal education, paternal College education significantly boosts income, while other levels (High School, Ungraded) do not have a statistically significant impact.
+
+4. Incarcerations
+Coefficient: -2689.4
+p-value: < 7.72e-09 (statistically significant)
+
+Interpretation:
+Each additional month of incarceration is associated with earning approximately $2,689 less annually, holding all other factors constant. This shows a strong negative relationship between incarceration history and income.
+
+### Model Fit and Diagnostics
+Residual Standard Error (RSE): 29,970
+Indicates the average error between predicted and observed income is approximately $29,970. The large residual error suggests a substantial amount of variation in income is unexplained by the model.
+
+Multiple R-Squared: 0.05858
+Only 5.9% of the variability in income is explained by the predictors. This suggests that there are other unobserved factors significantly influencing income.
+
+Adjusted R-Squared: 0.05774
+Adjusted for the number of predictors, the explanatory power remains very low.
+
+F-statistic: 69.65 (p-value < 2.2e-16)
+Indicates that the model as a whole is statistically significant, meaning at least one predictor has a significant relationship with income.
+
+
+```{r}
+# Confidence intervals for the coefficients
+confint(income_model)
+
+
+```
+# Insights from Confidence Intervals for Coefficients
+
+Confidence intervals (CIs) provide a range within which the true value of each coefficient is likely to fall, with a certain level of confidence (typically 95%). Interpretation of each predictor's CI is given below:
+
+# Key Insights
+
+1. Intercept
+CI: (45,718.943, 51,144.405)
+Interpretation:
+This represents the estimated average income for the baseline group:
+Male gender.
+Mothers and fathers with Grade School education.
+No incarcerations.
+The average baseline income is between $45,719 and $51,144.
+
+2. Gender (Female)
+CI: (-11,083.764, -8,562.605)
+Interpretation:
+Females earn between $8,563 and $11,084 less than males on average, holding all other factors constant.
+Since the entire CI is below zero, the effect of gender is statistically significant, confirming a notable income disparity favoring males.
+
+3. Mother's Education
+High School (vs. Grade School)
+
+CI: (-1,844.519, 3,433.863)
+Interpretation:
+The CI includes zero, meaning the effect of High School education is not statistically significant.
+Income could increase or decrease slightly for individuals with mothers who completed High School, but the impact is inconclusive.
+College (vs. Grade School)
+
+CI: (3,030.804, 8,684.705)
+Interpretation:
+The CI is entirely above zero, meaning the effect is statistically significant.
+Individuals with mothers who attained College education earn between $3,031 and $8,685 more than those with mothers who only completed Grade School.
+Ungraded (vs. Grade School)
+
+CI: (-40,151.950, 10,200.303)
+Interpretation:
+The CI includes zero, meaning the effect of Ungraded education is not statistically significant.
+4. Father's Education
+High School (vs. Grade School)
+
+CI: (-1,966.393, 3,395.935)
+Interpretation:
+The CI includes zero, meaning the effect of High School education is not statistically significant.
+College (vs. Grade School)
+
+CI: (5,764.846, 11,633.509)
+Interpretation:
+The CI is entirely above zero, meaning the effect is statistically significant.
+Individuals with fathers who attained College education earn between $5,765 and $11,634 more than those with fathers who only completed Grade School.
+Ungraded (vs. Grade School)
+
+CI: (-23,866.354, 19,813.400)
+Interpretation:
+The CI includes zero, meaning the effect of Ungraded education is not statistically significant.
+5. Incarcerations
+CI: (-3,601.532, -1,777.354)
+Interpretation:
+The CI is entirely below zero, meaning the effect is statistically significant.
+Each additional month of incarceration is associated with earning between $1,777 and $3,602 less annually, holding all other factors constant.
+This confirms a strong negative relationship between incarceration and income.
+
+Summary of Findings
+Gender Disparity:
+
+Females earn significantly less than males, with a consistent and statistically significant negative effect.
+Parental Education:
+
+Maternal and paternal College education have significant positive effects on income, with individuals earning between $3,000 and $11,600 more.
+Other levels of parental education (High School, Ungraded) do not show significant effects.
+Incarceration Impact:
+
+Incarceration has a significant negative effect on income, reducing annual earnings by up to $3,602 per additional month of incarceration.
+Statistical Significance:
+
+Predictors with statistically significant effects (CIs that exclude zero):
+Gender (Female).
+Maternal College education.
+Paternal College education.
+Incarcerations.
+
+
+```{r}
+# Diagnostic plots for model assumptions
+par(mfrow = c(2, 2))
+plot(income_model)
+```
+
+# Insights from Diagnostic Plots
+
+1. Residuals vs Fitted Plot
+Purpose: To check for non-linearity and unequal variance (heteroscedasticity).
+Observations:
+The residuals are not randomly scattered around the zero line; they appear to fan out as fitted values increase, indicating potential heteroscedasticity (non-constant variance).
+The residuals also show some systematic patterns, suggesting that the model may not fully capture non-linear relationships or interactions in the data.
+Implications:
+This indicates that the model assumptions of linearity and homoscedasticity are likely violated.
+Possible remedies include adding interaction terms, transforming variables, or using a different regression approach (e.g., weighted least squares).
+2. Normal Q-Q Plot
+Purpose: To check whether residuals follow a normal distribution.
+Observations:
+The residuals deviate from the straight diagonal line, especially in the tails, indicating that the residuals are not normally distributed.
+The heavy right tail (positive residuals) suggests that some high-income observations are poorly fitted by the model.
+Implications:
+This violates the assumption of normality required for valid inference (e.g., confidence intervals, hypothesis testing).
+Consider transforming the dependent variable (e.g., log or square root) to improve normality or using robust regression methods.
+3. Scale-Location Plot (Spread-Location Plot)
+Purpose: To check for homoscedasticity (constant variance of residuals).
+Observations:
+The red trend line is not horizontal and increases slightly as fitted values increase.
+Residual variance grows with larger fitted values, indicating heteroscedasticity.
+Implications:
+The unequal spread suggests that the assumption of homoscedasticity is violated.
+Consider applying a variance-stabilizing transformation (e.g., log transformation) or using a heteroscedasticity-consistent estimator.
+4. Residuals vs Leverage Plot
+Purpose: To identify influential observations that disproportionately affect the model.
+Observations:
+A few points (e.g., observations 8110, 3378, and 440) have high leverage and stand out as potential influential observations.
+None of these points exceed Cook's distance thresholds (dashed lines), meaning their influence is moderate but not extreme.
+Implications:
+Investigate these influential points further to determine if they represent outliers or data errors.
+If these points unduly influence the model, consider robust regression techniques or rechecking the data for accuracy.
+
+# Summary of Findings
+Linearity Assumption:
+
+Violated. Residual patterns suggest non-linear relationships or missing interaction terms.
+Normality Assumption:
+
+Violated. The residuals deviate significantly from normality, especially in the tails.
+Homoscedasticity Assumption:
+
+Violated. Residuals show non-constant variance, particularly for higher fitted values.
+Influential Observations:
+
+Some observations have moderate leverage but do not drastically affect the model.
+
+
+
+
+# Next Steps
+
+
+Based on the diagnostic plot insights, the following steps will help address the identified issues:
+
+# Transform the Dependent Variable (Income):
+
+Apply a logarithmic transformation to income to stabilize variance and improve normality.
+
+# Include Non-Linear or Interaction Terms:
+
+Add quadratic terms or interaction terms to account for potential non-linear relationships.
+
+
+# Refit the Model with Adjustments:
+
+Refit the regression model using the transformed dependent variable and any additional terms.
+
+# Recheck Diagnostics:
+
+Evaluate the updated model with diagnostic plots to confirm improvements.
+
+```{r}
+# Step 1: Log Transformation of Income
+# Log transform income to stabilize variance
+data$log_income <- log(data$income + 1)  # Add 1 to handle zero values
+
+```
+
+```{r}
+# Step 2: Add Interaction and Non-Linear Terms
+
+# Create interaction terms and quadratic terms
+data <- data %>%
+  mutate(
+    mom_dad_education_interaction = as.numeric(mom_education) * as.numeric(dad_education),
+    incarcerations_squared = incarcerations^2
+  )
+
+```
+
+```{r}
+# Check for zero or negative values in income
+sum(data$income <= 0, na.rm = TRUE)
+
+# Replace zeros or negative values in income with a small positive value (e.g., 1)
+data <- data %>%
+  mutate(income = ifelse(income <= 0, 1, income))  # Replace zero or negative values
+
+# Log transform income
+data$log_income <- log(data$income)
+
+```
+```{r}
+# Check for invalid values in log_income
+sum(is.na(data$log_income) | is.infinite(data$log_income))
+
+```
+
+
+
+```{r}
+# Step 3: Refit the Regression Model
+# Fit the updated regression model
+
+log_income_model <- lm(log_income ~ gender + mom_education + dad_education + incarcerations +
+                         mom_dad_education_interaction + incarcerations_squared, data = data)
+
+# Model summary
+summary(log_income_model)
+
+
+
+```
+#Insights from the Updated Regression Model
+
+# 1. Key Findings: Coefficients
+Intercept (10.53833):
+
+Represents the estimated log-income when all other predictors are zero (baseline category for categorical variables).
+Incomes are log-transformed, so this is approximately e^10.53833 which equates to a baseline income of around $37,875.
+
+Gender (genderFemale = -0.26855, p<2e−16):
+
+A significant negative coefficient indicates that being female is associated with a lower log-income compared to males.
+In practical terms, females earn approximately e^ −0.26855 ≈76.5% of what males earn, holding all other factors constant.
+Mom's Education:
+
+None of the education levels for mothers (High School, College, Ungraded) are significant predictors of log-income in this model.
+This contrasts with earlier findings where higher maternal education levels showed a moderate correlation with income. This suggests that maternal education may overlap with other predictors or that its effect diminishes after adjusting for other factors.
+Dad's Education:
+
+Similarly, none of the paternal education levels are statistically significant predictors of log-income. This may also suggest an overlap with other predictors or diminishing explanatory power.
+Incarcerations (-0.10305, p=0.0125):
+
+A significant negative coefficient indicates that higher levels of incarcerations are associated with lower log-income.
+Each additional incarceration decreases log-income by approximately e^ −0.10305 ≈90.2% of the income before incarceration.
+
+Interaction Term (Mom's and Dad's Education Interaction):
+
+The interaction term is not significant, suggesting no combined effect of maternal and paternal education levels on income.
+Incarcerations Squared:
+
+The quadratic term is not statistically significant (p=0.1358), suggesting no clear non-linear relationship between incarcerations and log-income in this model.
+
+# 2. Model Fit
+Residual Standard Error (1.312):
+
+Indicates the variability of residuals around the fitted values. While log-transformation helped reduce variance, residual variability is still high.
+Multiple R-Squared (0.01434):
+
+The model explains only 1.43% of the variance in log-income, indicating weak predictive power.
+This suggests that the variables included in the model (gender, parental education, incarcerations) account for only a small part of income variation.
+Adjusted R-Squared (0.01324):
+
+Adjusted for the number of predictors in the model. The value remains very low, reinforcing the weak fit.
+F-statistic (13.02, p<2.2e−16):
+
+Indicates that the model as a whole is statistically significant, but the low R-squared shows the practical significance is limited.
+
+# 3. Comparison to Original Model
+Log Transformation Effect:
+
+The log transformation reduced the residual variance and improved the normality of residuals, as seen in the diagnostic plots.
+However, it did not substantially improve the model's explanatory power.
+Non-Linear Terms and Interactions:
+
+The addition of interaction terms and quadratic terms did not significantly improve the model. This suggests that non-linear effects are minimal or not captured well by these variables.
+
+# 4. Practical Implications
+Gender Inequality:
+
+Gender remains the most significant predictor, with females earning substantially less than males on average.
+Parental Education:
+
+Although parental education had moderate correlations with income earlier, its effects are not significant after adjusting for other variables. This could suggest other mediating factors not included in the model.
+Impact of Incarcerations:
+
+The negative impact of incarcerations on income is statistically significant, highlighting the socioeconomic consequences of a criminal record.
+
+
+
+```{r}
+# Step 4: Diagnostic Plots for the Updated Model
+# Diagnostic plots for the updated model
+par(mfrow = c(2, 2))
+plot(log_income_model)
+
+```
+# Insights from Diagnostic Plots
+Residuals vs Fitted Plot:
+
+The residuals show some degree of randomness but exhibit slight patterns, indicating possible model misspecification or omitted variables.
+Variance seems more consistent compared to the untransformed model, suggesting log-transformation improved homoscedasticity.
+Q-Q Plot:
+
+Deviations from the diagonal line, particularly in the tails, suggest that residuals are not perfectly normally distributed.
+However, the log-transformation has mitigated some of the skewness seen earlier.
+Scale-Location Plot:
+
+The spread of residuals is relatively even across fitted values, supporting the assumption of homoscedasticity.
+The slight downward trend in the red line may suggest minor variance issues in certain ranges.
+Residuals vs Leverage Plot:
+
+No observations fall beyond the Cook’s distance threshold, indicating no extreme influential points.
+Some points with higher leverage deserve further inspection but do not significantly influence the model.
+Summary:
+The diagnostic plots confirm improved model assumptions after log-transformation.
+While the residuals are more homoscedastic and less skewed, some non-normality and slight model misspecification persist.
+Additional variables or interaction terms could further refine the model.
+
+```{r}
+
+
+```
+
+
+
+
+```{r}
+# Step 5: Robust Regression
+# Load the MASS package for robust regression
+library(MASS)
+
+# Fit a robust regression model
+robust_model <- rlm(log_income ~ gender + mom_education + dad_education + incarcerations +
+                      mom_dad_education_interaction + incarcerations_squared, data = data)
+
+# Model summary
+summary(robust_model)
+
+```
+
+
+# Analysis of Robust Regression Output
+Robust regression accounts for the influence of outliers and provides a more reliable model when standard assumptions may not hold.
+
+Key Observations:
+Intercept:
+
+The intercept (10.73) remains significant, representing the log-transformed baseline income when all predictors are at their reference levels.
+Gender:
+
+Female has a significant negative coefficient (−0.10, p<0.001), indicating that, holding other factors constant, females have approximately 10% lower income than males (e ^−0.10 ≈0.90).
+
+Parental Education:
+
+Mom's Education:
+High School and College are not statistically significant.
+"Ungraded" has a significant negative impact (−0.57, p<0.001), indicating much lower income for individuals with ungraded maternal education.
+Dad's Education:
+None of the categories are significant, suggesting weaker influence compared to maternal education.
+
+Incarcerations:
+
+A significant negative coefficient (−0.044, p<0.001) indicates that each additional incarceration decreases income by approximately 4.3% (e ^−0.044 ≈0.957).
+Squared term (+0.0061, p<0.01) suggests a diminishing non-linear effect of incarcerations, implying some reduction in the negative impact at higher levels.
+Interaction (Mom & Dad Education):
+
+A significant positive coefficient (+0.0278, p<0.05) indicates a slight combined positive effect when both parents have higher education levels.
+Residual Standard Error:
+
+0.2132 indicates relatively low residual variation, suggesting a better fit compared to the linear model.
+Insights:
+Gender Disparity:
+
+The robust regression confirms that females earn significantly less than males, independent of other factors.
+Parental Education:
+
+Maternal education (especially "Ungraded") has a stronger influence on income than paternal education, highlighting its critical role in economic outcomes.
+Incarcerations:
+
+The negative impact of incarcerations on income is confirmed, with a slight diminishing effect for higher levels.
+Interaction Effects:
+
+The positive interaction between maternal and paternal education suggests a combined benefit, albeit small, when both parents are well-educated.
+Model Robustness:
+
+The robust regression model mitigates the effect of outliers, making the findings more reliable and highlighting key predictors like gender and maternal education.
+This model refines earlier results by offering a more nuanced understanding of the predictors while addressing the influence of extreme observations.
+
+
+
+```{r}
+
+```
+
+
+### Section:4 Conclusions and Discussion
+
+*Main Conclusions:*
+We observed significant income disparities between males and females, with males consistently earning more across different levels of parental education and incarceration histories. Parental education, particularly College-level, had a positive impact on income for both genders, but males benefitted disproportionately, showing higher medians and more high-income outliers. Incarcerations had a strong negative effect on income, with earnings decreasing for each additional month incarcerated. Other factors, such as teacher quality, drug use, and parental relationships, did not show meaningful trends or correlations with income in this dataset.
+
+---
+
+*Limitations:*
+While our analysis provides useful insights, it has several limitations:
+
+Missing Variables: Key factors like occupational type, geographic location, or systemic discrimination, which could significantly influence income, were not included.
+
+Topcoded Income: The truncation of income at $200,000 limits our ability to analyze disparities among the top 2% of earners, potentially underestimating the extent of inequality at the higher end.
+
+Model Fit: The regression models explained only a small percentage of income variability, suggesting that many unobserved factors significantly impact income.
+
+Data Handling: The use of imputation methods (e.g., replacing missing values with means or medians) and assigning “Unknown” to categorical variables may have introduced some bias or oversimplified the analysis.
+
+---
+
+*Confidence and Believability:*
+We are moderately confident in our findings, particularly regarding gender income disparities, the influence of parental education, and the impact of incarcerations. These results align with observable trends in the data and are supported by statistical significance. However, the low explanatory power of the models and the absence of key variables limit the broader applicability of our conclusions.
+
+---
+
+*Recommendations for Policymakers:*
+Our findings can provide useful insights for policymakers, particularly in addressing gender inequality and the socioeconomic effects of parental education and incarceration. However, we would present these results with caution, emphasizing the limitations and the need for further research to incorporate missing variables and improve the robustness of the analysis. This would help ensure that policy recommendations are grounded in a more comprehensive understanding of income inequality.
+
